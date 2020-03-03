@@ -1,0 +1,16 @@
+base
+Seurat
+Matrix
+BiocGenerics
+S4Vectors
+IRanges
+GenomeInfoDb
+GenomicRanges
+Biobase
+AnnotationDbi
+GenomicFeatures
+AnnotationFilter
+ensembldb
+EnsDb.Hsapiens.v75
+rhdf5
+dplyr

@@ -1,0 +1,208 @@
+### QC & Identifying cell types in first batch of Down syndrome sequencing data:
+
+---
+  output:
+  html_document: default
+pdf_document: default
+---
+  ### QC & Identifying cell types in first batch of Down syndrome sequencing data
+  
+  ---
+  title: QC & Identifying cell types in first batch of Down syndrome sequencing data
+output:
+  html_document: default
+github_document: default
+fig_width: 12
+fig_height: 4 
+---
+  
+```{r include = FALSE}
+### Load data and packages
+knitr::opts_chunk$set(fig.width=24, fig.height=8) 
+```
+
+Load the required R libraries:
+```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE}
+library(Seurat)
+library(Matrix)
+library(EnsDb.Hsapiens.v75)
+library(rhdf5)
+library(dplyr)
+```
+
+Prior to this analysis we processed the raw sequencing data with cellranger and ran an algorithm called CellBender on it to remove ambient RNA.
+
+Here I 1.) load the data 2.) change the gene identifiers from ensemble ids to symbols 3.) construct a metadata matrix (with donor information, pcw etc.)  4.) put the data and metadata into a Seurat object. 5.) load mitochondrial genes from a database for later use 6.) Remove doublets, by loading the doublet scores I got from an algorithm (called scrublet) I ran on the data before.
+```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE}
+setwd('/home/jovyan/AA_DOW/')
+# sample_info = data.frame(matrix('', 8,4)) # (info from sample tracker)
+# colnames(sample_info) = c('SangerSampleID', 'Donor', 'Disease', 'PcW')
+# sample_info$SangerSampleID = c('DOW8726784', 'DOW8726783', 'DOW8726787', 'DOW8726788', 'DOW8726785', 'DOW8726786', 'DOW8726789', 'DOW8726790')
+# sample_info$Donor = c('Hob1', 'Hob1', 'Hob12', 'Hob12', 'Hob15', 'Hob15', 'Hob16', 'Hob16')
+# sample_info$Disease = c('TS21', 'TS21', 'TS21', 'TS21', 'Control', 'Control', 'Control', 'Control')
+# sample_info$PcW = c('13pcw', '13pcw', '14pcw', '14pcw', '13pcw', '13pcw', '13pcw', '13pcw')
+# scrublet_cutoff = c(0.33, 0.25, 0.4, 0.4, 0.4, 0.45, 0.4, 0.3) # From inspection of the scrublet plots (not included). This is quite a stringent doublet cutoff.
+# i = 1
+# print(i)
+# sampleID = sample_info$SangerSampleID[i]
+# scrublet_score = read.delim(paste('/home/jovyan/AA_DOW/scrublet/', sampleID ,'_doublets_scores.txt', sep = ''))
+# dow_counts = as.matrix(Read10X_h5(filename = paste('../data/AA_DOW/AA_DOW/cellranger302_count_33315_AA_', sampleID, '_GRCh38-3_0_0-premrna/output_filtered.h5', sep = ''), use.names = TRUE))
+# dow_counts = dow_counts[,scrublet_score < scrublet_cutoff[i]]
+# dow_metadata = data.frame(matrix('',dim(dow_counts)[2],4))
+# colnames(dow_metadata) = c('SangerSampleID', 'Donor', 'Disease', 'PcW')
+# dow_metadata$SangerSampleID = sample_info$SangerSampleID[i]
+# dow_metadata$Donor = sample_info$Donor[i]
+# dow_metadata$Disease = sample_info$Disease[i]
+# dow_metadata$PcW = sample_info$PcW[i]
+# geneNames = read.delim('/home/jovyan/data/AA_DOW/AA_DOW/cellranger302_count_33315_AA_DOW8726783_GRCh38-3_0_0-premrna/raw_feature_bc_matrix/features.tsv')
+# for (i in 2:8){
+#   print(i)
+#   sampleID = sample_info$SangerSampleID[i]
+#   scrublet_score = read.delim(paste('/home/jovyan/AA_DOW/scrublet/', sampleID ,'_doublets_scores.txt', sep = ''))
+#   dow_counts_subset = as.matrix(Read10X_h5(filename = paste('../data/AA_DOW/AA_DOW/cellranger302_count_33315_AA_', sampleID, '_GRCh38-3_0_0-premrna/output_filtered.h5', sep = ''), use.names = TRUE))
+#   dow_counts_subset = dow_counts_subset[,scrublet_score < scrublet_cutoff[i]]
+#   dow_metadata_subset = data.frame(matrix('',dim(dow_counts_subset)[2],4))
+#   colnames(dow_metadata_subset) = c('SangerSampleID', 'Donor', 'Disease', 'PcW')
+#   dow_metadata_subset$SangerSampleID = sample_info$SangerSampleID[i]
+#   dow_metadata_subset$Donor = sample_info$Donor[i]
+#   dow_metadata_subset$Disease = sample_info$Disease[i]
+#   dow_metadata_subset$PcW = sample_info$PcW[i]
+#   dow_counts = cbind(dow_counts, dow_counts_subset)
+#   dow_metadata = rbind(dow_metadata, dow_metadata_subset)
+# }
+# mitogenes = geneNames[,2][substring(geneNames[,2],1,3) == 'MT-']
+# percent.mt = colSums(dow_counts[rownames(dow_counts) %in% mitogenes,])/colSums(dow_counts)
+# Downs <- CreateSeuratObject(dow_counts, project = 'AA_DOW', min.cells = 0, min.features = 0)
+# Downs$Barcode = colnames(dow_counts)
+# Downs$SangerSampleID = dow_metadata$SangerSampleID
+# Downs$Donor = dow_metadata$Donor
+# Downs$Disease = dow_metadata$Disease
+# Downs$percent.mt = unname(percent.mt)
+# saveRDS(Downs, file = "../data/AA_DOW/AA_DOW_SeuratObject.rds")
+Downs = readRDS("../data/AA_DOW/AA_DOW_SeuratObject.rds")
+```
+
+The QC plots using number of detected genes, number of counts and percent of counts coming from mitochondrial genes (as a proxy for stress), show a couple of outlier cells, which I remove:
+  
+```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
+Downs.list <- SplitObject(Downs, split.by = 'Donor')
+i = 1
+VlnPlot(Downs.list[[i]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot1 <- FeatureScatter(Downs.list[[i]], feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(Downs.list[[i]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+Downs.list[[i]] <- subset(Downs.list[[i]], subset = nFeature_RNA > 1000 & nFeature_RNA < 15000 & nCount_RNA < 10^5 & percent.mt < 0.05)
+i = 2
+VlnPlot(Downs.list[[i]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot1 <- FeatureScatter(Downs.list[[i]], feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(Downs.list[[i]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+Downs.list[[i]] <- subset(Downs.list[[i]], subset = nFeature_RNA > 1000 & nFeature_RNA < 15000 & nCount_RNA < 10^5 & percent.mt < 0.05)
+i = 3
+VlnPlot(Downs.list[[i]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot1 <- FeatureScatter(Downs.list[[i]], feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(Downs.list[[i]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+Downs.list[[i]] <- subset(Downs.list[[i]], subset = nFeature_RNA > 1000 & nFeature_RNA < 15000 & nCount_RNA < 10^5 & percent.mt < 0.05)
+i = 4
+VlnPlot(Downs.list[[i]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot1 <- FeatureScatter(Downs.list[[i]], feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(Downs.list[[i]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+Downs.list[[i]] <- subset(Downs.list[[i]], subset = nFeature_RNA > 1000 & nFeature_RNA < 15000 & nCount_RNA < 10^5 & percent.mt < 0.05)
+```
+
+The following normalizes, scales and select 2000 particularly variable genes. 
+
+```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
+for (i in 1:4){
+Downs.list[[i]] <- NormalizeData(Downs.list[[i]], normalization.method = "LogNormalize", scale.factor = 10000)
+Downs.list[[i]] <- FindVariableFeatures(Downs.list[[i]], selection.method = "vst", nfeatures = 2000)
+top25 <- head(VariableFeatures(Downs.list[[i]]), 25)
+plot1 <- VariableFeaturePlot(Downs.list[[i]])
+plot2 <- LabelPoints(plot = plot1, points = top25, repel = TRUE)
+CombinePlots(plots = list(plot1, plot2))
+all.genes <- rownames(Downs.list[[i]])
+Downs.list[[i]] <- ScaleData(Downs.list[[i]], features = all.genes)
+}
+```
+
+These are the results of the PCA analysis:
+
+```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
+for (i in 1:4){
+Downs.list[[i]] <- RunPCA(Downs.list[[i]], features = VariableFeatures(object = Downs.list[[i]]))
+print(Downs.list[[i]][["pca"]], dims = 1:5, nfeatures = 5)
+VizDimLoadings(Downs.list[[i]], dims = 1:2, reduction = "pca")
+DimPlot(Downs.list[[i]], reduction = "pca")
+DimHeatmap(Downs.list[[i]], dims = 1, cells = round(dim(Downs.list[[i]])[2])/2, balanced = TRUE)
+DimHeatmap(Downs.list[[i]], dims = 1:15, cells = round(dim(Downs.list[[i]])[2])/2, balanced = TRUE)
+}
+```
+
+Based on the JackStraw procedure I select 14 PCs for further analysis in all cases:
+
+```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
+# for (i in range(4)){
+# Downs.list[[i]] <- JackStraw(Downs.list[[i]], num.replicate = 100)
+# Downs.list[[i]] <- ScoreJackStraw(Downs.list[[i]], dims = 1:20)
+# print(JackStrawPlot(Downs.list[[i]], dims = 1:20))
+# print(ElbowPlot(Downs.list[[i]], ndims = 40))
+# }
+```
+
+This is the clustering step:
+
+```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
+n_dimensions = 14
+for (i in 1:4){
+Downs.list[[i]] <- FindNeighbors(Downs.list[[i]], dims = 1:n_dimensions)
+Downs.list[[i]] <- FindClusters(Downs.list[[i]], resolution = 0.5)
+head(Idents(Downs.list[[i]]), 5)
+}
+```
+
+Clusters roughly agree with visual seperation on a UMAP plot:
+
+```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
+for (i in 1:4){
+Downs.list[[i]] <- RunUMAP(Downs.list[[i]], dims = 1:n_dimensions)
+print(DimPlot(Downs.list[[i]], reduction = "umap"))
+}
+
+```
+
+Visualize markers and annotate clusters:
+
+```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
+# Downs.markers <- FindAllMarkers(Downs, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+# saveRDS(Downs.markers, file = "../data/AA_DOW/Downs_markers.rds")
+# Downs.markers = readRDS("../data/AA_DOW/Downs_markers.rds")
+# top = Downs.markers %>% group_by(cluster) %>% top_n(n = 1, wt = avg_logFC)
+# FeaturePlot(Downs, features = top$gene)
+# top10 <- Downs %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+# DoHeatmap(Downs, features = top10$gene, cells = 1:dim(Downs)[2] + NoLegend())
+# as.matrix(top10)
+```
+
+Vizualize a priori chosen markers:
+
+```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
+for (i in 1:4){
+pdf(paste(Downs.list[[i]]$Donor[i], "_UMAP_celltypeMarkers.pdf", sep = ''), width = 30,30)
+print(FeaturePlot(Downs.list[[i]], features = c('CRYAB', 'HOPX', 'SOX2', 'HES1', 'PAX6', 'VIM', 'EOMES', 'NEUROD6', 'STMN2', 'SOX5', 'TBR1', 'BCL11B', 'SATB2', 'CALB2', 'SST', 'DLX2', 'DLX1', 'OLIG2', 'OLIG1', 'CLDN5', 'ITM2A', 'RGS5', 'CX3CR1', 'AIF1')))
+dev.off()
+print(Downs.list[[i]]$Donor[i])
+print(FeaturePlot(Downs.list[[i]], features = c('CRYAB', 'HOPX', 'SOX2', 'HES1', 'PAX6', 'VIM', 'EOMES', 'NEUROD6', 'STMN2', 'SOX5', 'TBR1', 'BCL11B', 'SATB2', 'CALB2', 'SST', 'DLX2', 'DLX1', 'OLIG2', 'OLIG1', 'CLDN5', 'ITM2A', 'RGS5', 'CX3CR1', 'AIF1'))) 
+}
+```
+
+Vizualize donor:
+
+```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
+#DimPlot(Downs.list[[i]], reduction = "umap", group.by = 'Disease')
+#DimPlot(Downs.list[[i]], reduction = "umap", group.by = 'Donor')
+```
+
+
+
