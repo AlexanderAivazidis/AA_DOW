@@ -25,7 +25,6 @@ Load the required R libraries:
 ```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE}
 library(Seurat)
 library(Matrix)
-library(EnsDb.Hsapiens.v75)
 library(rhdf5)
 library(dplyr)
 require(data.table)
@@ -81,19 +80,15 @@ setwd('/home/jovyan/AA_DOW/')
 # Downs$percent.mt = unname(percent.mt)
 # saveRDS(Downs, file = "../data/AA_DOW/AA_DOW_SeuratObject.rds")
 
-reference_counts = fread("zcat < ../data/fetalBrain/Bhaduri2020/Bhaduri2020/primarymatrix_nonorm.txt.gz")
-genes = unname(unlist(reference_counts[,1]))
-reference_counts = rowsum(reference_counts[,-1], genes)
-reference_meta <- read.table("../data/fetalBrain/Bhaduri2020/Bhaduri2020/meta.tsv", header=T, sep="\t", as.is=T, row.names=1)
-genes = gsub(".+[|]", "", genes)
-Reference <- CreateSeuratObject(counts = reference_counts, project = "fetalBrain_Reference", meta.data=reference_meta)
-saveRDS(Reference, file = "../data/fetalBrain/Bhaduri2020/B")
-Downs = readRDS("../data/AA_DOW/AA_DOW_SeuratObject.rds")
-
-
-genes = unname(unlist(test[,1]))
-test_new = rowsum(test[,-1], genes)
-
+# reference_counts = fread("zcat < ../data/fetalBrain/Bhaduri2020/Bhaduri2020/exprMatrix.tsv.gz")
+# genes = unname(unlist(reference_counts[,1]))
+# reference_counts = rowsum(reference_counts[,-1], genes)
+# reference_meta <- read.table("../data/fetalBrain/Bhaduri2020/Bhaduri2020/meta.tsv", header=T, sep="\t", as.is=T, row.names=1)
+# genes = gsub(".+[|]", "", genes)
+# Reference <- CreateSeuratObject(counts = reference_counts, project = "fetalBrain_Reference", meta.data = reference_meta)
+# saveRDS(Reference, file = "../data/fetalBrain/reference_SeuratObject.rds")
+Reference = readRDS('../data/fetalBrain/reference_SeuratObject.rds')
+Downs = readRDS("../data/fetalBrain/Bhaduri2020/Bhaduri2020/AA_DOW_SeuratObject.rds")
 ```
 
 The QC plots using number of detected genes, number of counts and percent of counts coming from mitochondrial genes (as a proxy for stress), show a couple of outlier cells, which I remove:
@@ -139,80 +134,23 @@ CombinePlots(plots = list(plot1, plot2))
 all.genes <- rownames(Downs.list[[i]])
 Downs.list[[i]] <- ScaleData(Downs.list[[i]], features = all.genes)
 }
+Reference = NormalizeData(Reference, normalization.method = "LogNormalize", scale.factor = 10000)
+Reference <- FindVariableFeatures(Reference, selection.method = "vst", nfeatures = 2000)
 ```
 
-These are the results of the PCA analysis:
+Integration:
 
 ```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
+
+predictions_Type = list()
+predictions_Subtype = list()
 for (i in 1:4){
-Downs.list[[i]] <- RunPCA(Downs.list[[i]], features = VariableFeatures(object = Downs.list[[i]]))
-print(Downs.list[[i]][["pca"]], dims = 1:5, nfeatures = 5)
-VizDimLoadings(Downs.list[[i]], dims = 1:2, reduction = "pca")
-DimPlot(Downs.list[[i]], reduction = "pca")
-DimHeatmap(Downs.list[[i]], dims = 1, cells = round(dim(Downs.list[[i]])[2])/2, balanced = TRUE)
-DimHeatmap(Downs.list[[i]], dims = 1:15, cells = round(dim(Downs.list[[i]])[2])/2, balanced = TRUE)
-}
-```
-
-Based on the JackStraw procedure I select 14 PCs for further analysis in all cases:
-
-```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
-# for (i in range(4)){
-# Downs.list[[i]] <- JackStraw(Downs.list[[i]], num.replicate = 100)
-# Downs.list[[i]] <- ScoreJackStraw(Downs.list[[i]], dims = 1:20)
-# print(JackStrawPlot(Downs.list[[i]], dims = 1:20))
-# print(ElbowPlot(Downs.list[[i]], ndims = 40))
-# }
-```
-
-This is the clustering step:
-
-```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
-n_dimensions = 14
-for (i in 1:4){
-Downs.list[[i]] <- FindNeighbors(Downs.list[[i]], dims = 1:n_dimensions)
-Downs.list[[i]] <- FindClusters(Downs.list[[i]], resolution = 0.5)
-head(Idents(Downs.list[[i]]), 5)
-}
-```
-
-Clusters roughly agree with visual seperation on a UMAP plot:
-
-```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
-for (i in 1:4){
-Downs.list[[i]] <- RunUMAP(Downs.list[[i]], dims = 1:n_dimensions)
-print(DimPlot(Downs.list[[i]], reduction = "umap"))
+  downs.anchors <- FindTransferAnchors(reference = Reference, query = Downs.list[[i]], dims = 1:30, verbose = TRUE)
+  predictions_Type[[i]] <- TransferData(anchorset = downs.anchors, refdata = Reference$Type, dims = 1:30)
+  predictions_Subtype[[i]] <- TransferData(anchorset = downs.anchors, refdata = Reference$Subtype, dims = 1:30)
 }
 
+saveRDS(prediction_Type, file = '/home/jovyan/data/AA_DOW/predictionsType.rds')
+saveRDS(prediction_Type, file = '/home/jovyan/data/AA_DOW/predictionsSubType.rds')
+
 ```
-
-Visualize markers and annotate clusters:
-
-```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
-# Downs.markers <- FindAllMarkers(Downs, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-# saveRDS(Downs.markers, file = "../data/AA_DOW/Downs_markers.rds")
-# Downs.markers = readRDS("../data/AA_DOW/Downs_markers.rds")
-# top = Downs.markers %>% group_by(cluster) %>% top_n(n = 1, wt = avg_logFC)
-# FeaturePlot(Downs, features = top$gene)
-# top10 <- Downs %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
-# DoHeatmap(Downs, features = top10$gene, cells = 1:dim(Downs)[2] + NoLegend())
-# as.matrix(top10)
-```
-
-Vizualize a priori chosen markers:
-
-```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
-for (i in 1:4){
- print(FeaturePlot(Downs.list[[i]], features = c('CRYAB', 'HOPX', 'SOX2', 'HES1', 'PAX6', 'VIM', 'EOMES', 'NEUROD6', 'STMN2', 'SOX5', 'TBR1', 'BCL11B', 'SATB2', 'CALB2', 'SST', 'DLX2', 'DLX1', 'OLIG2', 'OLIG1', 'CLDN5', 'ITM2A', 'RGS5', 'CX3CR1', 'AIF1'))) 
-}
-```
-
-Vizualize donor:
-
-```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
-DimPlot(Downs, reduction = "umap", group.by = 'Disease')
-DimPlot(Downs, reduction = "umap", group.by = 'Donor')
-```
-
-
-
