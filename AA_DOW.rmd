@@ -168,7 +168,7 @@ print(FeaturePlot(Downs, features = c('CRYAB', 'HOPX', 'SOX2', 'HES1', 'PAX6', '
 Vizualize donor:
 
 ```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
-pdf(paste("AllDonors_UMAP_TS21andControl.pdf", sep = ''), width = 30,30)
+pdf(paste("AllDonors_UMAP_TS21andControl.pdf", sep = ''), width = 20,20)
 print(DimPlot(Downs, reduction = "umap", group.by = 'Disease'))
 dev.off()
 print(DimPlot(Downs, reduction = "umap", group.by = 'Disease'))
@@ -178,5 +178,141 @@ dev.off()
 print(DimPlot(Downs, reduction = "umap", group.by = 'Donor'))
 ```
 
+Load and visualize subtype classification from Bhaduri et al 2020:
+
+```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
+
+subtype_Classification = readRDS('/home/jovyan/data/AA_DOW/predictionsSubType.rds')
+for (i in 1:4){
+subtype_Classification[[i]] = subtype_Classification[[i]][!colnames(subtype_Classification[[i]]) %in% c("prediction.score.Low.Quality", "prediction.score.max", "predicted.id")] 
+}
+
+classification = list()
+score = list()
+for (i in 1:4){
+  classification[[i]] = substring(unname(apply(subtype_Classification[[i]],1,function(x) colnames(subtype_Classification[[i]])[which.max(x)])), 18)
+  score[[i]] = unname(apply(subtype_Classification[[i]],1,function(x) max(x)))
+}
+
+celltypes = c('oRG', 'vRG', 'tRG', 'IPC.newborn', 'IPC.new', "IPC.div1", "IPC.div2", 'early', 'late', "Deep.Layer", "Layer.IV", "Layer.VI.Pan.area", "Upper.Layer", "Layer.VI.Occipital", "Upper.Layer.Occipital", "PFC", "Upper.Layer.PFC", "Parietal.and.Temporal", "SST.MGE1", "MGE2", "Mural", "OPC", "Microglia", "Endothelial")
 
 
+proportions = list()
+for (i in 1:4){
+  temp = rep(0,length(celltypes))
+  names(temp) = celltypes
+  tab = table(classification[[i]])
+  for (j in 1:length(celltypes)){
+    if (celltypes[j] %in% names(tab)){
+      temp[j] = tab[celltypes[j]] 
+    }
+  proportions[[i]] = temp/sum(temp)  
+  }
+}
+
+averageScore = list()
+for (i in 1:4){
+  temp = rep(0,length(celltypes))
+  names(temp) = celltypes
+  tab = table(classification[[i]])
+  for (j in 1:length(celltypes)){
+    if (celltypes[j] %in% names(tab)){
+      temp[j] = round(mean(score[[i]][classification[[i]] == celltypes[j]]),2)
+    }
+  averageScore[[i]] = temp  
+  }
+}
+
+N = length(celltypes)
+
+# create dummy data
+data <- data.frame(
+  donor = c(rep('Hob1', N), rep('Hob12', N),rep('Hob15', N),rep('Hob16', N)),
+  celltype = c(celltypes, celltypes, celltypes, celltypes),
+  value = c(proportions[[1]], proportions[[2]], proportions[[3]], proportions[[4]]), 
+  score = c(averageScore[[1]], averageScore[[2]], averageScore[[3]], averageScore[[4]])
+)
+
+data$celltype = factor(data$celltype, levels = celltypes)
+
+require(ggplot2)
+library(viridis)
+
+ggplot(data, aes(fill=donor, y=value, x=donor)) + 
+    geom_bar(position="dodge", stat="identity") +
+    scale_fill_viridis(discrete = T, option = "E") +
+    ggtitle("Cell type proportions across all 4 samples") +
+    facet_wrap(~celltype) +
+    theme(legend.position="none") +
+    xlab("")
+
+```
+
+Load and visualize subtype classification from Bhaduri et al 2020:
+
+```{r, include = TRUE, message = FALSE, warning = FALSE, cache = FALSE, fig.height = 8, fig.width = 16}
+
+subtype_Classification = readRDS('/home/jovyan/data/AA_DOW/predictionsType.rds')
+for (i in 1:4){
+subtype_Classification[[i]] = subtype_Classification[[i]][!colnames(subtype_Classification[[i]]) %in% c("prediction.score.Outlier", "prediction.score.max", "predicted.id")] 
+}
+
+classification = list()
+score = list()
+for (i in 1:4){
+  classification[[i]] = substring(unname(apply(subtype_Classification[[i]],1,function(x) colnames(subtype_Classification[[i]])[which.max(x)])), 18)
+  score[[i]] = unname(apply(subtype_Classification[[i]],1,function(x) max(x)))
+}
+
+celltypes = c('Radial.Glia', 'IPC', 'Excitatory.Neuron.', 'Inhibitory.Neuron', 'Mural', 'OPC', 'Endothelial', 'Microglia', 'Red.blood.cells')
+
+proportions = list()
+for (i in 1:4){
+  temp = rep(0,length(celltypes))
+  names(temp) = celltypes
+  tab = table(classification[[i]])
+  for (j in 1:length(celltypes)){
+    if (celltypes[j] %in% names(tab)){
+      temp[j] = tab[celltypes[j]] 
+    }
+  proportions[[i]] = temp/sum(temp)  
+  }
+}
+
+averageScore = list()
+for (i in 1:4){
+  temp = rep(0,length(celltypes))
+  names(temp) = celltypes
+  tab = table(classification[[i]])
+  for (j in 1:length(celltypes)){
+    if (celltypes[j] %in% names(tab)){
+      temp[j] = round(mean(score[[i]][classification[[i]] == celltypes[j]]),2)
+    }
+  averageScore[[i]] = temp  
+  }
+}
+
+N = length(celltypes)
+
+# create dummy data
+data <- data.frame(
+  donor = c(rep('Hob1', N), rep('Hob12', N),rep('Hob15', N),rep('Hob16', N)),
+  celltype = c(celltypes, celltypes, celltypes, celltypes),
+  value = c(proportions[[1]], proportions[[2]], proportions[[3]], proportions[[4]]), 
+  score = c(averageScore[[1]], averageScore[[2]], averageScore[[3]], averageScore[[4]])
+)
+
+data$celltype = factor(data$celltype, levels = celltypes)
+
+require(ggplot2)
+library(viridis)
+
+ggplot(data, aes(fill=donor, y=value, x=donor)) + 
+    geom_bar(position="dodge", stat="identity") +
+    scale_fill_viridis(discrete = T, option = "E") +
+    ggtitle("Cell type proportions across all 4 samples") +
+    facet_wrap(~celltype) +
+    theme(legend.position="none") +
+    xlab("")
+
+```

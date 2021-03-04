@@ -1,7 +1,7 @@
 import sys
-import scrublet as scr
-import scipy.io
-import matplotlib.pyplot as plt
+import scrublet as scrs
+import scipy.ios
+import matplotlib.pyplot as plts
 import numpy as np
 import os
 import scanpy as sc
